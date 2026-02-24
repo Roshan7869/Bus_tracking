@@ -46,3 +46,36 @@ BackEnd - https://github.com/deepak252/Bus-Tracking-Backend
 <img height="440" width="200" alt="Screenshot 2023-12-30 at 2 10 31 PM" src="https://github.com/deepak252/Bus-Tracking-App-Kotlin/assets/72331440/48fd89ec-7867-4f3f-9cbc-6b667078cf14">
 <img height="440" width="200" alt="Screenshot 2023-12-30 at 2 10 40 PM" src="https://github.com/deepak252/Bus-Tracking-App-Kotlin/assets/72331440/b93c0c96-113e-4fed-8231-e1db1c376adb">
 
+
+## Driver-side CEBO Mobile Tracking Setup
+
+This repository now includes a full driver telemetry pipeline based on **Smartphone GNSS + Cell Tower Hybrid Tracking**.
+
+### What is implemented
+- Foreground service (`BusTrackingForegroundService`) with wake lock, 3s GNSS request interval, 2s fastest interval, 5m displacement, and 15s heartbeat uplink.
+- Hybrid location source flagging (`GNSS` vs `CELL_TOWER`) and low-confidence mode activation when accuracy degrades (>30m or low satellite quality).
+- JSON telemetry packet model with bus/driver identifiers, coordinates, speed, heading, accuracy, source, timestamp, battery, and network type.
+- Secure HTTPS transmission through Retrofit + app interceptors with retry policy (5 attempts, 10 seconds interval).
+- Offline buffering up to 500 records in local persistent storage and bulk sync on reconnect.
+- Auto-restart on boot using `TrackingBootReceiver` for persistent fleet operation.
+- Driver control panel (`HomeDriverScreen`) to start/stop tracking with Bus ID and Driver ID.
+
+### Android permissions and runtime behavior
+- Added permissions for foreground service, wake lock, background location, and boot-completed restart.
+- Tracking runs in a persistent foreground notification channel for Android background execution compliance.
+
+### Backend expectations
+Expose the following REST endpoints on the same backend base URL:
+- `POST /api/tracking/location`
+- `POST /api/tracking/location/bulk`
+
+Payload format matches `TrackingPacket` under `feature_tracking/domain/model`.
+
+## Consumer-Readiness hardening (2026 update)
+
+Recent platform hardening aligned to consumer app standards:
+- Role-aware home experience: drivers now land on dedicated tracking console while passengers continue to home feed.
+- Startup routing stabilized with state-based initial route flow (splash/auth/dashboard).
+- Security posture improved by moving API/socket hosts to `BuildConfig` and removing legacy storage flags.
+- Permission UX now supports a non-blocking limited mode instead of hard lock dialogs.
+- Tracking lifecycle improved with no-location watchdog and low-battery alert de-duplication.
