@@ -1,6 +1,7 @@
 package com.example.bustrackingapp.core.di
 
 import android.content.Context
+import com.example.bustrackingapp.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.SharedPreferencesMigration
@@ -14,6 +15,8 @@ import com.example.bustrackingapp.core.data.repository.UserPrefsRepositoryImpl
 import com.example.bustrackingapp.core.domain.repository.LocationRepository
 import com.example.bustrackingapp.core.domain.repository.UserPrefsRepository
 import com.example.bustrackingapp.core.util.Constants
+import com.example.bustrackingapp.feature_tracking.data.local.TrackingBufferDao
+import com.example.bustrackingapp.feature_tracking.data.local.TrackingDatabase
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import dagger.Module
@@ -29,6 +32,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import androidx.room.Room
 import javax.inject.Singleton
 
 @Module
@@ -38,7 +42,11 @@ object AppModule {
     @Singleton
     @Provides
     fun provideLoggingInterceptor() : HttpLoggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = if (BuildConfig.DEBUG) {
+            HttpLoggingInterceptor.Level.BODY
+        } else {
+            HttpLoggingInterceptor.Level.NONE
+        }
     }
 
     @Singleton
@@ -97,4 +105,22 @@ object AppModule {
     fun provideDispatcher(): CoroutineDispatcher {
         return Dispatchers.IO
     }
+
+    // ── Room — Tracking offline buffer ────────────────────────────────────────
+
+    @Singleton
+    @Provides
+    fun provideTrackingDatabase(
+        @ApplicationContext appContext: Context,
+    ): TrackingDatabase = Room.databaseBuilder(
+        appContext,
+        TrackingDatabase::class.java,
+        "tracking_buffer.db"
+    ).fallbackToDestructiveMigration().build()
+
+    @Singleton
+    @Provides
+    fun provideTrackingBufferDao(
+        db: TrackingDatabase,
+    ): TrackingBufferDao = db.trackingBufferDao()
 }

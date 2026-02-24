@@ -1,5 +1,12 @@
 package com.example.bustrackingapp.feature_tracking.domain.model
 
+enum class ConfidenceLevel {
+    LOW_ACCURACY_MODE,
+    NO_LOCATION_UPDATE,
+    LOW_BATTERY,
+    AUTO_STOPPED
+}
+
 data class TrackingPacket(
     val busId: String,
     val driverId: String,
@@ -13,5 +20,5 @@ data class TrackingPacket(
     val timestampUnix: Long,
     val batteryPercentage: Int,
     val networkType: String,
-    val confidenceFlag: String? = null,
+    val confidenceFlag: ConfidenceLevel? = null,
 )

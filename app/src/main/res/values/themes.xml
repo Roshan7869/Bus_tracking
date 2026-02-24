@@ -1,8 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.BusTrackingApp" parent="android:Theme.Material.Light.NoActionBar" >
+    <!--
+        Shell theme used BEFORE the SplashScreen API kicks in.
+        We extend Theme.SplashScreen so the OS manages the animated launch icon.
+        The app's real MaterialTheme is applied after setContent in MainActivity.
+    -->
+    <style name="Theme.BusTrackingApp" parent="Theme.SplashScreen">
+        <!-- Splash background colour (matches the app's primary brand colour) -->
+        <item name="windowSplashScreenBackground">#0D47A1</item>
+
+        <!--
+            Adaptive launcher icon to show in the splash circle.
+            Replace with @mipmap/ic_launcher once the custom icon is created.
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+
+        <!-- Minimum time the splash is visible (ms) — 0 = dismiss as soon as app is ready -->
+        <item name="windowSplashScreenAnimationDuration">300</item>
+
+        <!-- Theme to transition into once splash is dismissed -->
+        <item name="postSplashScreenTheme">@style/Theme.BusTrackingApp.NoActionBar</item>
+
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+    </style>
+
+    <!-- Post-splash theme applied to the activity after the splash is done -->
+    <style name="Theme.BusTrackingApp.NoActionBar" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
         <item name="android:windowBackground">@color/transparent</item>
     </style>
+
 </resources>

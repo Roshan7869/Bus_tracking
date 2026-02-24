@@ -15,4 +15,10 @@ data class HomeDriverUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
-)
+) {
+    /** True when the device has no data connectivity at all. */
+    val isOffline: Boolean get() = networkType.equals("NONE", ignoreCase = true)
+
+    /** True when there are locally buffered packets waiting to be sent to the server. */
+    val isSyncing: Boolean get() = !isOffline && bufferedCount > 0
+}

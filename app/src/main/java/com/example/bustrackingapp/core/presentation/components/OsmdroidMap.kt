@@ -1,13 +1,15 @@
 package com.example.bustrackingapp.core.presentation.components
 
+import android.animation.TypeEvaluator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Matrix
-import android.graphics.Path
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.view.animation.LinearInterpolator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
@@ -15,102 +17,134 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
-import com.example.bustrackingapp.R
 
-
-@Composable
-fun rememberMapView(context : Context): MapView {
-    val mapView = remember{
-        MapView(context)
-    }
-    // Cleanup the MapView when the composable is disposed
-    DisposableEffect(Unit) {
-        onDispose {
-            mapView.onDetach()
-        }
-    }
-    return mapView.apply {
-        initMap(this)
-    }
+// ---------------------------------------------------------------------------
+//  GeoPoint Evaluator — enables ValueAnimator to interpolate between coordinates
+// ---------------------------------------------------------------------------
+private val geoPointEvaluator = TypeEvaluator<GeoPoint> { fraction, start, end ->
+    GeoPoint(
+        start.latitude  + fraction * (end.latitude  - start.latitude),
+        start.longitude + fraction * (end.longitude - start.longitude),
+    )
 }
 
-fun initMap(mapView : MapView){
+// ---------------------------------------------------------------------------
+//  Composable Map Factory
+// ---------------------------------------------------------------------------
+@Composable
+fun rememberMapView(context: Context): MapView {
+    val mapView = remember { MapView(context) }
+    DisposableEffect(Unit) {
+        onDispose { mapView.onDetach() }
+    }
+    return mapView.apply { initMap(this) }
+}
+
+// ---------------------------------------------------------------------------
+//  Map Initialisation
+// ---------------------------------------------------------------------------
+fun initMap(mapView: MapView) {
     mapView.apply {
         isHorizontalMapRepetitionEnabled = false
-        isVerticalMapRepetitionEnabled = false
+        isVerticalMapRepetitionEnabled   = false
         setMultiTouchControls(true)
-        val tileSystem = MapView.getTileSystem()
+        val ts = MapView.getTileSystem()
         setScrollableAreaLimitDouble(
-            BoundingBox(
-                tileSystem.maxLatitude, tileSystem.maxLongitude, // top-left
-                tileSystem.minLatitude, tileSystem.minLongitude  // bottom-right
-            )
+            BoundingBox(ts.maxLatitude, ts.maxLongitude, ts.minLatitude, ts.minLongitude)
         )
         minZoomLevel = 4.0
-        mapView.controller.setZoom(15.0)
+        controller.setZoom(15.0)
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Map Events
+// ---------------------------------------------------------------------------
+fun mapEventsOverlay(
+    context: Context,
+    view: MapView,
+    onTap: (GeoPoint) -> Unit,
+): MapEventsOverlay = MapEventsOverlay(object : MapEventsReceiver {
+    override fun singleTapConfirmedHelper(geoPoint: GeoPoint?): Boolean {
+        if (geoPoint != null) { onTap(geoPoint); view.invalidate() }
+        return true
+    }
+    override fun longPressHelper(p: GeoPoint?) = false
+})
 
-fun mapEventsOverlay(context : Context, view : MapView, onTap : (GeoPoint)->Unit ) : MapEventsOverlay{
-    return MapEventsOverlay(object : MapEventsReceiver {
-        override fun singleTapConfirmedHelper(geoPoint: GeoPoint?): Boolean {
-            // Handle the map click event
-            if (geoPoint != null) {
-                onTap(geoPoint)
-                view.invalidate() // Refresh the map view
-            }
-            return true
-        }
-
-        override fun longPressHelper(p: GeoPoint?): Boolean {
-            // Handle long press event if needed
-            return false
-        }
-    })
-}
-
+// ---------------------------------------------------------------------------
+//  Static Marker
+// ---------------------------------------------------------------------------
 fun addMarker(
-//    context : Context,
-    mapView : MapView,
+    mapView: MapView,
     geoPoint: GeoPoint,
-    title: String?=null,
-    snippet : String?=null,
-    icon: Drawable?=null,
-) : Marker{
-    val marker = Marker(mapView)
-    marker.position = geoPoint
-    marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-
-    marker.title = title
-    if(snippet!=null){
-        marker.snippet = snippet
+    title: String?    = null,
+    snippet: String?  = null,
+    icon: Drawable?   = null,
+): Marker {
+    val marker = Marker(mapView).apply {
+        position = geoPoint
+        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+        this.title   = title
+        snippet?.let { this.snippet = it }
+        icon?.let    { this.icon    = it }
     }
-
-    if(icon!=null){
-        marker.icon = icon
-    }
-//    marker.icon = customIcon
-
     mapView.overlays.add(marker)
     return marker
 }
 
+// ---------------------------------------------------------------------------
+//  Animated Bus Marker
+//
+//  Smoothly glides the marker from its current position to [targetPoint] over
+//  [durationMs] milliseconds and rotates the icon to [headingDegrees].
+//  Call this every time a new tracking packet arrives instead of setting
+//  marker.position directly, e.g.:
+//
+//    LaunchedEffect(busLocation) {
+//        animateMarker(mapView, busMarker, newGeoPoint, heading = packet.headingDegree)
+//    }
+// ---------------------------------------------------------------------------
+fun animateMarker(
+    mapView: MapView,
+    marker: Marker,
+    targetPoint: GeoPoint,
+    headingDegrees: Float = 0f,
+    durationMs: Long = 3_000L,
+) {
+    val startPoint = GeoPoint(marker.position)
 
-// Draw path bw two point
-fun createPolyline(mapView: MapView, startPoint: GeoPoint, endPoint: GeoPoint): Polyline {
-    val polyline = Polyline(mapView)
-    polyline.color = 0xFF0000FF.toInt() // Set color to blue
-    polyline.addPoint(startPoint)
-    polyline.addPoint(endPoint)
-    polyline.infoWindow = null
-    return polyline
+    ValueAnimator.ofObject(geoPointEvaluator, startPoint, targetPoint).apply {
+        duration     = durationMs
+        interpolator = LinearInterpolator()
+        addUpdateListener { animator ->
+            val interpolated = animator.animatedValue as GeoPoint
+            marker.position = interpolated
+            marker.rotation = -headingDegrees   // osmdroid rotation is clockwise-negative
+            mapView.invalidate()
+        }
+        start()
+    }
 }
 
+// ---------------------------------------------------------------------------
+//  Polyline
+// ---------------------------------------------------------------------------
+fun createPolyline(
+    mapView: MapView,
+    startPoint: GeoPoint,
+    endPoint: GeoPoint,
+): Polyline = Polyline(mapView).apply {
+    color = 0xFF0000FF.toInt()
+    addPoint(startPoint)
+    addPoint(endPoint)
+    infoWindow = null
+}
 
+// ---------------------------------------------------------------------------
+//  Internal helpers
+// ---------------------------------------------------------------------------
+@Suppress("unused")
 private fun resizeDrawable(drawable: Drawable?, newWidth: Int, newHeight: Int): Bitmap {
     val bitmap = Bitmap.createBitmap(newWidth, newHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)

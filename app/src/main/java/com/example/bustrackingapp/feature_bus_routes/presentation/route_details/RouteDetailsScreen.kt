@@ -21,11 +21,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -83,6 +85,7 @@ import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 @Composable
 fun RouteDetailsScreen(
     routeNo : String,
+    onBack : () -> Unit = {},
     routeDetailsViewModel: RouteDetailsViewModel = hiltViewModel(),
     snackbarState : SnackbarHostState = remember {
         SnackbarHostState()
@@ -107,6 +110,11 @@ fun RouteDetailsScreen(
                         "Route Details",
                         style = MaterialTheme.typography.headlineSmall
                     )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
                 }
             )
         },

@@ -1,51 +1,74 @@
 package com.example.bustrackingapp.feature_tracking.data.local
 
-import android.content.Context
-import com.example.bustrackingapp.core.util.GsonUtil
+import com.example.bustrackingapp.feature_tracking.domain.model.ConfidenceLevel
 import com.example.bustrackingapp.feature_tracking.domain.model.TrackingPacket
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Offline packet queue backed by Room (replaces the previous SharedPreferences JSON-blob
+ * implementation). Every operation is O(1) and runs on a background thread via
+ * suspend functions — the UI thread is never blocked.
+ */
 @Singleton
 class TrackingBufferStore @Inject constructor(
-    @ApplicationContext context: Context,
+    private val dao: TrackingBufferDao,
 ) {
-    private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-
-    fun add(packet: TrackingPacket) {
-        val queue = getAll().toMutableList()
-        if (queue.size >= MAX_RECORDS) {
-            queue.removeFirst()
-        }
-        queue.add(packet)
-        save(queue)
-    }
-
-    fun getAll(): List<TrackingPacket> {
-        val json = prefs.getString(KEY_QUEUE, null) ?: return emptyList()
-        return GsonUtil.gson.fromJson(json, Array<TrackingPacket>::class.java)?.toList().orEmpty()
-    }
-
-
-    fun size(): Int = getAll().size
-
-    fun removeFirst(count: Int) {
-        if (count <= 0) return
-        val queue = getAll().toMutableList()
-        repeat(count.coerceAtMost(queue.size)) {
-            queue.removeFirst()
-        }
-        save(queue)
-    }
-
-    private fun save(queue: List<TrackingPacket>) {
-        prefs.edit().putString(KEY_QUEUE, GsonUtil.gson.toJson(queue)).apply()
-    }
-
     companion object {
-        private const val PREF_NAME = "tracking_buffer"
-        private const val KEY_QUEUE = "tracking_queue"
-        private const val MAX_RECORDS = 500
+        const val MAX_RECORDS = 500
     }
+
+    /** Add a packet to the buffer, evicting the oldest if the cap is reached. */
+    suspend fun add(packet: TrackingPacket) {
+        if (dao.count() >= MAX_RECORDS) {
+            dao.deleteOldestOne()   // FIFO eviction — keeps the newest data
+        }
+        dao.insert(packet.toEntity())
+    }
+
+    /** Return all buffered packets ordered chronologically (oldest first). */
+    suspend fun getAll(): List<TrackingPacket> =
+        dao.getAll().map { it.toPacket() }
+
+    /** Remove the [count] oldest packets — called after a successful bulk sync. */
+    suspend fun removeFirst(count: Int) {
+        dao.deleteOldest(count)
+    }
+
+    /** Current size of the offline queue. */
+    suspend fun size(): Int = dao.count()
 }
+
+// ─── Mapping helpers ──────────────────────────────────────────────────────────
+
+private fun TrackingPacket.toEntity() = TrackingLogEntity(
+    busId            = busId,
+    driverId         = driverId,
+    latitude         = latitude,
+    longitude        = longitude,
+    speedKmph        = speedKmph,
+    headingDegree    = headingDegree,
+    accuracyMeters   = accuracyMeters,
+    locationSource   = locationSource,
+    satelliteCount   = satelliteCount,
+    timestampUnix    = timestampUnix,
+    batteryPercentage = batteryPercentage,
+    networkType      = networkType,
+    confidenceFlag   = confidenceFlag?.name,
+)
+
+private fun TrackingLogEntity.toPacket() = TrackingPacket(
+    busId            = busId,
+    driverId         = driverId,
+    latitude         = latitude,
+    longitude        = longitude,
+    speedKmph        = speedKmph,
+    headingDegree    = headingDegree,
+    accuracyMeters   = accuracyMeters,
+    locationSource   = locationSource,
+    satelliteCount   = satelliteCount,
+    timestampUnix    = timestampUnix,
+    batteryPercentage = batteryPercentage,
+    networkType      = networkType,
+    confidenceFlag   = confidenceFlag?.let { runCatching { ConfidenceLevel.valueOf(it) }.getOrNull() },
+)

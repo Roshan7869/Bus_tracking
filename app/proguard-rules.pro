@@ -1,21 +1,50 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# ─── App Keep Rules (com.cebo.bustracker) ─────────────────────────────────────
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep all data/model classes from R8 stripping fields used by Gson
+-keepclassmembers class com.cebo.bustracker.** { *; }
+-keepclassmembers class com.example.bustrackingapp.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ─── Gson ─────────────────────────────────────────────────────────────────────
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
+-keep class sun.misc.Unsafe { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ─── Retrofit ─────────────────────────────────────────────────────────────────
+-keep class retrofit2.** { *; }
+-keepattributes Exceptions
+-dontwarn okio.**
+-dontwarn retrofit2.**
+-dontwarn javax.annotation.**
+
+# ─── OkHttp ───────────────────────────────────────────────────────────────────
+-keep class okhttp3.** { *; }
+-dontwarn okhttp3.**
+
+# ─── Hilt / Dagger ────────────────────────────────────────────────────────────
+-keep class dagger.hilt.** { *; }
+-keep class javax.inject.** { *; }
+-keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
+-dontwarn dagger.hilt.**
+
+# ─── Room ─────────────────────────────────────────────────────────────────────
+-keep class androidx.room.** { *; }
+-keep @androidx.room.Entity class * { *; }
+-dontwarn androidx.room.**
+
+# ─── Coroutines / Kotlin ─────────────────────────────────────────────────────
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-dontwarn kotlinx.coroutines.**
+
+# ─── OSMDroid ─────────────────────────────────────────────────────────────────
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**
+
+# ─── Socket.IO ────────────────────────────────────────────────────────────────
+-keep class io.socket.** { *; }
+-dontwarn io.socket.**
+
+# ─── Debug symbols (line numbers for crash reports) ───────────────────────────
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

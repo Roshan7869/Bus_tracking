@@ -6,15 +6,22 @@ plugins {
 }
 
 android {
-    namespace 'com.example.bustrackingapp'
-    compileSdk 33
+    namespace 'com.cebo.bustracker'
+    compileSdk 34
 
     defaultConfig {
-        applicationId "com.example.bustrackingapp"
+        applicationId "com.cebo.bustracker"
         minSdk 21
-        targetSdk 33
-        versionCode 1
-        versionName "1.0"
+        targetSdk 34
+        // Auto-increment versionCode from git tag count; falls back to 1 locally
+        versionCode = { ->
+            try {
+                def out = new ByteArrayOutputStream()
+                exec { commandLine 'git', 'rev-list', '--count', 'HEAD'; standardOutput = out }
+                return out.toString().trim().toInteger()
+            } catch (ignored) { return 1 }
+        }()
+        versionName "1.0.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -24,13 +31,15 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField "String", "API_BASE_URL", '"https://dev.api.example.com/api/"'
-            buildConfigField "String", "SOCKET_BASE_URL", '"https://dev.api.example.com"'
+            // Override API_BASE_URL in local.properties for dev targets
+            buildConfigField "String", "API_BASE_URL", '"https://dev.api.cebo.in/api/"'
+            buildConfigField "String", "SOCKET_BASE_URL", '"https://dev.api.cebo.in"'
         }
         release {
-            minifyEnabled false
-            buildConfigField "String", "API_BASE_URL", '"https://api.example.com/api/"'
-            buildConfigField "String", "SOCKET_BASE_URL", '"https://api.example.com"'
+            minifyEnabled true
+            shrinkResources true
+            buildConfigField "String", "API_BASE_URL", '"https://api.cebo.in/api/"'
+            buildConfigField "String", "SOCKET_BASE_URL", '"https://api.cebo.in"'
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -59,6 +68,7 @@ android {
 dependencies {
 
     implementation 'androidx.core:core-ktx:1.10.1'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
     implementation 'androidx.activity:activity-compose:1.7.2'
     implementation platform('androidx.compose:compose-bom:2022.10.00')
@@ -75,11 +85,13 @@ dependencies {
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
 
     def accompanistVersion = "0.31.2-alpha"
+    // NOTE: accompanist-swiperefresh is DEPRECATED — replaced by Material3 PullToRefreshBox below
+    // Keeping for legacy screens; will be migrated as Phase 3 executes.
     implementation "com.google.accompanist:accompanist-navigation-animation:$accompanistVersion"
     implementation "com.google.accompanist:accompanist-swiperefresh:$accompanistVersion"
-//    implementation "com.google.accompanist:accompanist-permissions:$accompanistVersion"
-//    implementation "com.google.accompanist:accompanist-permissions:0.23.1"
     implementation "com.google.accompanist:accompanist-permissions:0.31.3-beta"
+    // Stable immutable collections for Compose skipped re-compositions
+    implementation 'org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.6'
 
 
 //    https://developer.android.com/training/dependency-injection/hilt-android#groovy

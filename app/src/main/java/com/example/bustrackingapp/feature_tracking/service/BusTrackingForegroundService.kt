@@ -18,6 +18,7 @@ import androidx.core.app.NotificationCompat
 import com.example.bustrackingapp.MainActivity
 import com.example.bustrackingapp.R
 import com.example.bustrackingapp.feature_tracking.data.repository.TrackingRepository
+import com.example.bustrackingapp.feature_tracking.domain.model.ConfidenceLevel
 import com.example.bustrackingapp.feature_tracking.domain.model.TrackingPacket
 import com.example.bustrackingapp.feature_tracking.util.LocationQualityEvaluator
 import com.example.bustrackingapp.feature_tracking.util.TrackingDeviceStateReader
@@ -53,6 +54,9 @@ class BusTrackingForegroundService : Service() {
     private var lastLocation: Location? = null
     private var lastLocationTimestamp: Long = 0L
     private var lowBatteryAlertSent = false
+    private var currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS
+    private var stationaryStartTime: Long? = null
+    private var autoStopWarningShown = false
 
     private val runtimePrefs by lazy {
         getSharedPreferences(TrackingBootReceiver.PREF_NAME, Context.MODE_PRIVATE)
@@ -118,6 +122,44 @@ class BusTrackingForegroundService : Service() {
                     val packet = createPacket(location, batteryPercentage, networkType)
                     sentSuccessfully = trackingRepository.transmit(packet)
                     emitOperationalAlerts(packet)
+                    
+                    if (location.speed < 1.0f) {
+                        if (stationaryStartTime == null) {
+                            stationaryStartTime = now
+                            autoStopWarningShown = false
+                        }
+                        val stationaryMs = now - stationaryStartTime!!
+                        // Throttle heartbeat after 5 min stationary
+                        if (stationaryMs > 5 * 60 * 1000L) {
+                            currentHeartbeatInterval = STATIONARY_HEARTBEAT_INTERVAL_MS
+                        }
+                        // Warn driver 5 min before auto-stop
+                        if (stationaryMs > AUTO_STOP_THRESHOLD_MS - 5 * 60 * 1000L && !autoStopWarningShown) {
+                            autoStopWarningShown = true
+                            updateNotification("Bus idle — auto-stopping in 5 minutes")
+                        }
+                        // Auto-stop after 30 min stationary
+                        if (stationaryMs > AUTO_STOP_THRESHOLD_MS) {
+                            trackingRepository.transmit(
+                                TrackingPacket(
+                                    busId = busId, driverId = driverId,
+                                    latitude = location.latitude, longitude = location.longitude,
+                                    speedKmph = 0f, headingDegree = 0f,
+                                    accuracyMeters = location.accuracy,
+                                    locationSource = "GNSS", satelliteCount = null,
+                                    timestampUnix = now, batteryPercentage = batteryPercentage,
+                                    networkType = networkType,
+                                    confidenceFlag = ConfidenceLevel.AUTO_STOPPED,
+                                )
+                            )
+                            stopTracking()
+                            return@launch
+                        }
+                    } else {
+                        stationaryStartTime = null
+                        autoStopWarningShown = false
+                        currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS
+                    }
                 }
 
                 if (now - lastLocationTimestamp > NO_LOCATION_UPDATE_THRESHOLD_MS) {
@@ -135,18 +177,18 @@ class BusTrackingForegroundService : Service() {
                             timestampUnix = now,
                             batteryPercentage = batteryPercentage,
                             networkType = networkType,
-                            confidenceFlag = "NO_LOCATION_UPDATE",
+                            confidenceFlag = ConfidenceLevel.NO_LOCATION_UPDATE,
                         ),
                     )
                 }
 
                 publishRuntimeStatus(now, batteryPercentage, networkType, sentSuccessfully)
-                delay(HEARTBEAT_INTERVAL_MS)
+                delay(currentHeartbeatInterval)
             }
         }
     }
 
-    private fun publishRuntimeStatus(
+    private suspend fun publishRuntimeStatus(
         now: Long,
         batteryPercentage: Int,
         networkType: String,
@@ -161,10 +203,10 @@ class BusTrackingForegroundService : Service() {
             .apply()
     }
 
-    private fun emitOperationalAlerts(packet: TrackingPacket) {
+    private suspend fun emitOperationalAlerts(packet: TrackingPacket) {
         if (packet.batteryPercentage <= LOW_BATTERY_ALERT_THRESHOLD && !lowBatteryAlertSent) {
             lowBatteryAlertSent = true
-            trackingRepository.transmit(packet.copy(confidenceFlag = "LOW_BATTERY"))
+            trackingRepository.transmit(packet.copy(confidenceFlag = ConfidenceLevel.LOW_BATTERY))
         } else if (packet.batteryPercentage > LOW_BATTERY_ALERT_THRESHOLD) {
             lowBatteryAlertSent = false
         }
@@ -207,23 +249,28 @@ class BusTrackingForegroundService : Service() {
         stopSelf()
     }
 
-    private fun createNotification(): Notification {
+    private fun buildNotification(contentText: String): Notification {
         createNotificationChannel()
         val mainIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            mainIntent,
+            this, 0, mainIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Bus tracking active")
-            .setContentText("Live location is being shared every 15 seconds")
+            .setContentText(contentText)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
+    }
+
+    private fun createNotification(): Notification =
+        buildNotification("Live location is being shared every 15 seconds")
+
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, buildNotification(text))
     }
 
     private fun createNotificationChannel() {
@@ -272,6 +319,8 @@ class BusTrackingForegroundService : Service() {
         private const val FASTEST_UPDATE_INTERVAL_MS = 2_000L
         private const val MIN_DISPLACEMENT_METERS = 5f
         private const val HEARTBEAT_INTERVAL_MS = 15_000L
+        private const val STATIONARY_HEARTBEAT_INTERVAL_MS = 60_000L
+        private const val AUTO_STOP_THRESHOLD_MS = 30 * 60 * 1000L // 30 minutes
         private const val NO_LOCATION_UPDATE_THRESHOLD_MS = 60_000L
         private const val LOW_BATTERY_ALERT_THRESHOLD = 20
         private const val WAKE_LOCK_TIMEOUT_MS = 20 * 60 * 1000L

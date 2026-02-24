@@ -66,7 +66,9 @@ fun HomeScreen(
         key2 = homeViewModel.uiState.nearbyBusStops,
         key3 = homeViewModel.uiState.errorLocation
     ){
-        Log.d("BTLogger","showSnackbar")
+        if (com.example.bustrackingapp.BuildConfig.DEBUG) {
+            Log.d("BTLogger","showSnackbar")
+        }
         if(homeViewModel.uiState.errorLocation!=null){
             snackbarState.showSnackbar(homeViewModel.uiState.errorLocation!!)
         }else if(homeViewModel.uiState.errorNearbyBuses!=null){
@@ -74,7 +76,6 @@ fun HomeScreen(
         }else if(homeViewModel.uiState.errorNearbyStops!=null){
             snackbarState.showSnackbar(homeViewModel.uiState.errorNearbyStops!!)
         }
-
     }
 
     Scaffold(
